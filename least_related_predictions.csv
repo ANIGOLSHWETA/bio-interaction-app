@@ -1,0 +1,11 @@
+Node1,Node2,Score,Predicted_Label
+miR-22-3p,hsa-miR-5704,0.0,0
+hsa-miR-6088,RP11-51M18.1,0.0,0
+papillary thyroid carcinoma (PTC),hsa-miR-181c,0.0,0
+hsa-mir-331-3p,AP004289.2,0.0,0
+LARGE1,CACNB4,0.0,0
+RP11-473I1.10,AHSA2,0.0,0
+SNHG7,ACSF2,0.0,0
+hsa-miR-208a-3p,DOID:0050851,0.0,0
+CASC7,hsa-let-7f-5p,0.0,0
+ICD10:K,NCF1,0.0,0
