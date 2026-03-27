@@ -1,5 +1,8 @@
 streamlit
 pandas
-networkx
+numpy
 plotly
+networkx
 scikit-learn
+torch
+node2vec
