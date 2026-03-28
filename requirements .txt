@@ -1,8 +1,0 @@
-streamlit
-pandas
-numpy
-plotly
-networkx
-scikit-learn
-torch
-node2vec
