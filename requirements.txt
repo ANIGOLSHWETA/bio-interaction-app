@@ -1,7 +1,0 @@
-
-echo "streamlit
-pandas
-numpy
-plotly
-networkx
-scikit-learn" 
