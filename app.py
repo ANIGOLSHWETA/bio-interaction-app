@@ -21,33 +21,15 @@ df = load_data()
 # 3. TITLE
 # =====================================
 st.title("🧬 lncRNA–miRNA Interaction Explorer")
-st.markdown("Explore predicted biological interactions using AI")
+st.markdown("Understand WHY interactions happen using AI")
 
 # =====================================
-# 4. TOP INTERACTIONS 🔥
+# 4. SEARCH
 # =====================================
-st.subheader("🔥 Top Interactions")
-top_df = df.sort_values(by="Score", ascending=False).head(10)
-st.dataframe(top_df, width='stretch')
+search = st.text_input("🔍 Search lncRNA or miRNA")
 
-# =====================================
-# 5. LEAST INTERACTIONS ❄️
-# =====================================
-st.subheader("❄️ Least Interactions")
-least_df = df.sort_values(by="Score", ascending=True).head(10)
-st.dataframe(least_df, width='stretch')
-
-# =====================================
-# 6. SEARCH (FULL DATASET)
-# =====================================
-st.subheader("🔍 Search Any lncRNA / miRNA")
-
-search = st.text_input("Enter gene or miRNA name")
-
-# ALWAYS start from FULL dataset
 results = df.copy()
 
-# Filter if user types
 if search:
     results = results[
         (results["lncRNA"].str.contains(search, case=False, na=False)) |
@@ -55,49 +37,90 @@ if search:
     ]
 
 # =====================================
-# 7. OPTIONAL SCORE FILTER
-# =====================================
-min_score = st.slider("Minimum Interaction Score", 0.0, 1.0, 0.0)
-results = results[results["Score"] >= min_score]
-
-# =====================================
-# 8. DISPLAY RESULTS
+# 5. SHOW RESULTS
 # =====================================
 if len(results) > 0:
-    st.success(f"✅ Found {len(results)} interactions")
+    st.success(f"Found {len(results)} interactions")
 
-    st.subheader("📊 Matching Interactions")
-    st.dataframe(results.head(20), width='stretch')
+    display_df = results.head(20)
+
+    st.dataframe(display_df, width='stretch')
 
     # =====================================
-    # 9. NETWORK GRAPH 🌐
+    # SELECT INTERACTION
+    # =====================================
+    st.subheader("🧠 Select Interaction to Explain")
+
+    selected = st.selectbox(
+        "Choose interaction",
+        display_df.index
+    )
+
+    row = display_df.loc[selected]
+
+    lnc = row["lncRNA"]
+    mir = row["miRNA"]
+    score = row["Score"]
+
+    # =====================================
+    # EXPLANATION PANEL
+    # =====================================
+    st.subheader("🔬 Interaction Explanation")
+
+    if score > 0.8:
+        strength = "Strong"
+        meaning = "Very high similarity in biological patterns"
+        use = "Highly useful for disease prediction and drug discovery"
+    elif score > 0.6:
+        strength = "Moderate"
+        meaning = "Possible regulatory interaction"
+        use = "Useful for further biological validation"
+    else:
+        strength = "Weak"
+        meaning = "Low similarity, less likely interaction"
+        use = "May not be biologically significant"
+
+    st.markdown(f"""
+    ### 🧬 {lnc} ↔ {mir}
+
+    **📈 Interaction Strength:** {strength} ({score:.2f})
+
+    **🧠 WHY this interaction?**  
+    The model found strong similarity between their embeddings, meaning they appear in similar biological contexts.
+
+    **⚙️ HOW was it predicted?**  
+    Using Node2Vec, both nodes were converted into vectors.  
+    Their similarity (cosine + dot product) indicates interaction likelihood.
+
+    **💊 WHAT is it useful for?**  
+    {use}
+
+    **🔬 Biological Meaning:**  
+    {lnc} may regulate or influence {mir}, impacting gene expression pathways.
+    """)
+
+    # =====================================
+    # NETWORK GRAPH
     # =====================================
     st.subheader("🌐 Interaction Network")
 
     G = nx.Graph()
 
-    for _, row in results.head(20).iterrows():
-        G.add_edge(row["lncRNA"], row["miRNA"], weight=row["Score"])
+    for _, r in display_df.iterrows():
+        G.add_edge(r["lncRNA"], r["miRNA"], weight=r["Score"])
 
     pos = nx.spring_layout(G, seed=42)
 
-    # EDGES
     edge_x, edge_y = [], []
+
     for edge in G.edges():
         x0, y0 = pos[edge[0]]
         x1, y1 = pos[edge[1]]
         edge_x += [x0, x1, None]
         edge_y += [y0, y1, None]
 
-    edge_trace = go.Scatter(
-        x=edge_x,
-        y=edge_y,
-        mode='lines',
-        line=dict(width=2, color='gray'),
-        hoverinfo='none'
-    )
+    edge_trace = go.Scatter(x=edge_x, y=edge_y, mode='lines')
 
-    # NODES
     node_x, node_y, node_text, node_color = [], [], [], []
 
     for node in G.nodes():
@@ -106,47 +129,21 @@ if len(results) > 0:
         node_y.append(y)
         node_text.append(node)
 
-        # Color logic
         if "mir" in node.lower():
-            node_color.append("red")   # miRNA
+            node_color.append("red")
         else:
-            node_color.append("blue")  # lncRNA
+            node_color.append("blue")
 
     node_trace = go.Scatter(
         x=node_x,
         y=node_y,
         mode='markers+text',
         text=node_text,
-        textposition="top center",
-        marker=dict(
-            size=20,
-            color=node_color,
-            line=dict(width=2, color='black')
-        )
+        marker=dict(size=20, color=node_color)
     )
 
     fig = go.Figure(data=[edge_trace, node_trace])
-    fig.update_layout(
-        showlegend=False,
-        margin=dict(l=0, r=0, t=30, b=0)
-    )
-
     st.plotly_chart(fig, width='stretch')
 
 else:
-    st.warning("❌ No interactions found")
-
-# =====================================
-# 10. EXPLANATION PANEL 🧠
-# =====================================
-st.subheader("🧠 How to Interpret")
-
-st.markdown("""
-- 🔴 **Red nodes** → miRNA  
-- 🔵 **Blue nodes** → lncRNA  
-- 📈 **Score** → Probability of interaction  
-- 🔥 High score → Strong interaction  
-- ❄️ Low score → Weak interaction  
-
-💡 Search explores FULL dataset → helps find novel interactions
-""")
+    st.warning("No interactions found")
