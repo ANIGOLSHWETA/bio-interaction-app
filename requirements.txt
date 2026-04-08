@@ -1,6 +1,5 @@
-
-streamlit
-pandas
-pyvis
-networkx
-numpy
+streamlit==1.32.2
+pandas==2.0.3
+numpy==1.24.4
+networkx==3.1
+plotly==5.18.0
