@@ -1,195 +1,152 @@
+# =====================================
+# 1. IMPORTS
+# =====================================
 import streamlit as st
 import pandas as pd
 import networkx as nx
 import plotly.graph_objects as go
 
-# =====================================
-# PAGE CONFIG
-# =====================================
-st.set_page_config(
-    page_title="Bio Interaction Explorer",
-    layout="wide"
-)
+st.set_page_config(page_title="Bio Interaction Explorer", layout="wide")
 
 # =====================================
-# CUSTOM CSS (UI BEAUTIFICATION)
+# 2. LOAD DATA
 # =====================================
-st.markdown("""
-<style>
-.big-title {
-    font-size: 32px;
-    font-weight: bold;
-    color: #2E86C1;
-}
-.card {
-    padding: 15px;
-    border-radius: 10px;
-    background-color: #F4F6F7;
-    margin-bottom: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
+@st.cache_data
+def load_data():
+    return pd.read_csv("final_interactions.csv")
 
-st.markdown('<div class="big-title">🧬 lncRNA–miRNA Interaction Explorer</div>', unsafe_allow_html=True)
+df = load_data()
 
 # =====================================
-# LOAD DATA
+# 3. TITLE
 # =====================================
-df = pd.read_csv("final_interactions.csv")
-least_df = pd.read_csv("least_interactions.csv")
+st.title("🧬 lncRNA–miRNA Interaction Explorer")
+st.markdown("Explore predicted biological interactions using AI")
 
 # =====================================
-# SIDEBAR
+# 4. TOP INTERACTIONS 🔥
 # =====================================
-st.sidebar.header("🔍 Controls")
-
-search = st.sidebar.text_input("Search Gene / miRNA")
-
-view = st.sidebar.radio(
-    "Select View",
-    ["Top 🔥", "Least ❄️"]
-)
+st.subheader("🔥 Top Interactions")
+top_df = df.sort_values(by="Score", ascending=False).head(10)
+st.dataframe(top_df, width='stretch')
 
 # =====================================
-# FILTER
+# 5. LEAST INTERACTIONS ❄️
 # =====================================
-data = df.head(50) if view == "Top 🔥" else least_df.head(50)
+st.subheader("❄️ Least Interactions")
+least_df = df.sort_values(by="Score", ascending=True).head(10)
+st.dataframe(least_df, width='stretch')
 
+# =====================================
+# 6. SEARCH (FULL DATASET)
+# =====================================
+st.subheader("🔍 Search Any lncRNA / miRNA")
+
+search = st.text_input("Enter gene or miRNA name")
+
+# ALWAYS start from FULL dataset
+results = df.copy()
+
+# Filter if user types
 if search:
-    data = data[
-        data["lncRNA"].str.contains(search, case=False) |
-        data["miRNA"].str.contains(search, case=False)
+    results = results[
+        (results["lncRNA"].str.contains(search, case=False, na=False)) |
+        (results["miRNA"].str.contains(search, case=False, na=False))
     ]
 
 # =====================================
-# METRICS CARDS
+# 7. OPTIONAL SCORE FILTER
 # =====================================
-col1, col2, col3 = st.columns(3)
-
-col1.metric("Total Interactions", len(df))
-col2.metric("Showing", len(data))
-col3.metric("Mode", view)
+min_score = st.slider("Minimum Interaction Score", 0.0, 1.0, 0.0)
+results = results[results["Score"] >= min_score]
 
 # =====================================
-# TABLE
+# 8. DISPLAY RESULTS
 # =====================================
-st.subheader("📊 Interaction Table")
-st.dataframe(data, use_container_width=True)
+if len(results) > 0:
+    st.success(f"✅ Found {len(results)} interactions")
 
-# =====================================
-# BUILD GRAPH
-# =====================================
-G = nx.Graph()
+    st.subheader("📊 Matching Interactions")
+    st.dataframe(results.head(20), width='stretch')
 
-for _, row in data.iterrows():
-    G.add_edge(row["lncRNA"], row["miRNA"], weight=row["Score"])
+    # =====================================
+    # 9. NETWORK GRAPH 🌐
+    # =====================================
+    st.subheader("🌐 Interaction Network")
 
-pos = nx.spring_layout(G, seed=42)
+    G = nx.Graph()
 
-# =====================================
-# EDGE TRACES (COLORED)
-# =====================================
-edge_traces = []
+    for _, row in results.head(20).iterrows():
+        G.add_edge(row["lncRNA"], row["miRNA"], weight=row["Score"])
 
-for u, v, d in G.edges(data=True):
-    x0, y0 = pos[u]
-    x1, y1 = pos[v]
-    score = d["weight"]
+    pos = nx.spring_layout(G, seed=42)
 
-    if score > 0.8:
-        color = "green"
-    elif score > 0.6:
-        color = "orange"
-    else:
-        color = "red"
+    # EDGES
+    edge_x, edge_y = [], []
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
 
-    edge_traces.append(
-        go.Scatter(
-            x=[x0, x1],
-            y=[y0, y1],
-            mode='lines',
-            line=dict(width=2, color=color),
-            hoverinfo='text',
-            text=f"{u} ↔ {v}<br>Score: {score:.3f}"
+    edge_trace = go.Scatter(
+        x=edge_x,
+        y=edge_y,
+        mode='lines',
+        line=dict(width=2, color='gray'),
+        hoverinfo='none'
+    )
+
+    # NODES
+    node_x, node_y, node_text, node_color = [], [], [], []
+
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(node)
+
+        # Color logic
+        if "mir" in node.lower():
+            node_color.append("red")   # miRNA
+        else:
+            node_color.append("blue")  # lncRNA
+
+    node_trace = go.Scatter(
+        x=node_x,
+        y=node_y,
+        mode='markers+text',
+        text=node_text,
+        textposition="top center",
+        marker=dict(
+            size=20,
+            color=node_color,
+            line=dict(width=2, color='black')
         )
     )
 
-# =====================================
-# NODE TYPES (COLOR)
-# =====================================
-node_x, node_y = [], []
-node_text = []
-node_color = []
+    fig = go.Figure(data=[edge_trace, node_trace])
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=0, r=0, t=30, b=0)
+    )
 
-for node in G.nodes():
-    x, y = pos[node]
-    node_x.append(x)
-    node_y.append(y)
-    node_text.append(node)
+    st.plotly_chart(fig, width='stretch')
 
-    # Simple rule (customize if needed)
-    if "mir" in node.lower():
-        node_color.append("lightcoral")   # miRNA
-    else:
-        node_color.append("skyblue")      # lncRNA
-
-node_trace = go.Scatter(
-    x=node_x,
-    y=node_y,
-    mode='markers+text',
-    text=node_text,
-    textposition="top center",
-    marker=dict(size=18, color=node_color),
-    hoverinfo='text'
-)
+else:
+    st.warning("❌ No interactions found")
 
 # =====================================
-# GRAPH FIGURE
+# 10. EXPLANATION PANEL 🧠
 # =====================================
-fig = go.Figure(data=edge_traces + [node_trace])
+st.subheader("🧠 How to Interpret")
 
-fig.update_layout(
-    title="🌐 Interaction Network",
-    showlegend=False,
-    hovermode='closest',
-    margin=dict(b=20, l=5, r=5, t=40)
-)
+st.markdown("""
+- 🔴 **Red nodes** → miRNA  
+- 🔵 **Blue nodes** → lncRNA  
+- 📈 **Score** → Probability of interaction  
+- 🔥 High score → Strong interaction  
+- ❄️ Low score → Weak interaction  
 
-st.plotly_chart(fig, use_container_width=True)
-
-# =====================================
-# INTERACTION EXPLANATION
-# =====================================
-st.subheader("🧠 Interaction Explanation")
-
-options = data.apply(lambda x: f"{x['lncRNA']} ↔ {x['miRNA']}", axis=1)
-selected = st.selectbox("Select Interaction", options)
-
-if selected:
-    row = data.iloc[list(options).index(selected)]
-    score = row["Score"]
-
-    st.markdown(f"### 🔗 {row['lncRNA']} ↔ {row['miRNA']}")
-
-    st.metric("Score", f"{score:.4f}")
-
-    if score > 0.8:
-        st.success("🟢 Strong Interaction")
-    elif score > 0.6:
-        st.warning("🟠 Moderate Interaction")
-    else:
-        st.error("🔴 Weak Interaction")
-
-    # Explanation block
-    st.markdown("#### 🧬 AI Explanation")
-    st.write(f"""
-    - High embedding similarity between nodes
-    - Graph connectivity supports interaction
-    - Model confidence: {round(score*100,2)}%
-    """)
-
-# =====================================
-# FOOTER
-# =====================================
-st.markdown("---")
-st.markdown("🚀 Powered by Node2Vec + Deep Learning + Graph AI")
+💡 Search explores FULL dataset → helps find novel interactions
+""")
