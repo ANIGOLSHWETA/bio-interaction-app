@@ -2,43 +2,41 @@ import streamlit as st
 import pandas as pd
 import networkx as nx
 import plotly.graph_objects as go
-import numpy as np
 
 # ==============================
-# PAGE CONFIG
+# PAGE CONFIG (PRO LEVEL UI)
 # ==============================
-st.set_page_config(page_title="Bio Interaction Explorer", layout="wide")
+st.set_page_config(
+    page_title="Bio Interaction Intelligence",
+    layout="wide"
+)
 
 # ==============================
-# CUSTOM UI
+# CUSTOM CSS (INDUSTRY UI)
 # ==============================
 st.markdown("""
 <style>
 body {
-    background: linear-gradient(135deg, #1f1c2c, #928dab);
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
 }
 .title {
     font-size: 40px;
     font-weight: bold;
-    color: white;
-    text-align: center;
+    color: #00F5A0;
 }
 .card {
-    background: rgba(255,255,255,0.08);
-    backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.05);
+    padding: 20px;
     border-radius: 15px;
-    padding: 15px;
-    margin: 10px;
-    color: white;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    box-shadow: 0px 4px 20px rgba(0,0,0,0.3);
+    margin-bottom: 20px;
 }
-.high {color:#00ff9f;}
-.medium {color:orange;}
-.low {color:red;}
+.highlight {
+    color: #00F5A0;
+    font-weight: bold;
+}
 </style>
 """, unsafe_allow_html=True)
-
-st.markdown('<div class="title">🧬 Bio Interaction Explorer</div>', unsafe_allow_html=True)
 
 # ==============================
 # LOAD DATA
@@ -46,229 +44,153 @@ st.markdown('<div class="title">🧬 Bio Interaction Explorer</div>', unsafe_all
 df = pd.read_csv("final_interactions.csv")
 
 # ==============================
-# SEARCH
+# HEADER
 # ==============================
-search = st.text_input("🔍 Search lncRNA / miRNA")
+st.markdown('<div class="title">🧬 Bio Interaction Intelligence System</div>', unsafe_allow_html=True)
 
-if search:
-    results = df[
-        (df["lncRNA"].str.contains(search, case=False)) |
-        (df["miRNA"].str.contains(search, case=False))
-    ]
-else:
-    results = df
+st.markdown("Explore **lncRNA–miRNA interactions** using AI-powered predictions.")
 
 # ==============================
-# EXPLANATION FUNCTION
+# SEARCH PANEL
 # ==============================
-def explain(score):
-    if score > 0.8:
-        return "Strong binding → likely regulates gene expression"
-    elif score > 0.6:
-        return "Moderate interaction → possible regulatory effect"
-    else:
-        return "Weak interaction → low biological significance"
+st.markdown("### 🔍 Search Interaction")
 
-# ==============================
-# TOP + LOW INTERACTIONS
-# ==============================
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("🔥 Top Interactions")
-    for _, row in df.head(5).iterrows():
-        st.markdown(f"""
-        <div class="card">
-        <h4 class="high">{row['lncRNA']} ⟷ {row['miRNA']}</h4>
-        Score: {row['Score']} <br>
-        {explain(row['Score'])}
-        </div>
-        """, unsafe_allow_html=True)
+    search_lnc = st.text_input("Enter lncRNA")
 
 with col2:
-    st.subheader("❄️ Least Interactions")
-    for _, row in df.tail(5).iterrows():
-        st.markdown(f"""
-        <div class="card">
-        <h4 class="low">{row['lncRNA']} ⟷ {row['miRNA']}</h4>
-        Score: {row['Score']} <br>
-        {explain(row['Score'])}
-        </div>
-        """, unsafe_allow_html=True)
+    search_mir = st.text_input("Enter miRNA")
 
 # ==============================
-# SEARCH RESULTS
+# SEARCH LOGIC (IMPORTANT)
 # ==============================
-if search:
-    st.subheader("🔍 Search Results")
+results = df.copy()
 
-    for _, row in results.head(10).iterrows():
+if search_lnc:
+    results = results[results["lncRNA"].str.contains(search_lnc, case=False, na=False)]
 
-        if row["Score"] > 0.8:
-            cls = "high"
-        elif row["Score"] > 0.6:
-            cls = "medium"
+if search_mir:
+    results = results[results["miRNA"].str.contains(search_mir, case=False, na=False)]
+
+# ==============================
+# RESULTS DISPLAY
+# ==============================
+st.markdown("### 📊 Interaction Results")
+
+if len(results) > 0:
+
+    st.dataframe(results.head(20), width='stretch')
+
+    # ==============================
+    # INTERACTION GRAPH
+    # ==============================
+    st.markdown("### 🌐 Interaction Network")
+
+    G = nx.Graph()
+
+    for _, row in results.head(20).iterrows():
+        G.add_edge(row["lncRNA"], row["miRNA"], weight=row["Score"])
+
+    pos = nx.spring_layout(G, seed=42)
+
+    edge_x, edge_y = [], []
+
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
+
+    edge_trace = go.Scatter(
+        x=edge_x,
+        y=edge_y,
+        mode='lines',
+        line=dict(width=2, color='#888'),
+        hoverinfo='none'
+    )
+
+    node_x, node_y, node_text, node_color = [], [], [], []
+
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+        node_text.append(node)
+
+        if node in df["lncRNA"].values:
+            node_color.append("cyan")
         else:
-            cls = "low"
+            node_color.append("orange")
 
-        st.markdown(f"""
-        <div class="card">
-        <h4 class="{cls}">{row['lncRNA']} ⟷ {row['miRNA']}</h4>
-        Score: {row['Score']} <br>
+    node_trace = go.Scatter(
+        x=node_x,
+        y=node_y,
+        mode='markers+text',
+        text=node_text,
+        textposition="top center",
+        marker=dict(
+            size=20,
+            color=node_color,
+            line=dict(width=2, color='white')
+        )
+    )
 
-        <b>WHY?</b><br>
-        Sequence complementarity + embedding similarity
+    fig = go.Figure(data=[edge_trace, node_trace])
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=0, r=0, t=0, b=0),
+        plot_bgcolor='#0f2027'
+    )
 
-        <br><br><b>HOW?</b><br>
-        Node2Vec captures graph structure + ML predicts link
+    st.plotly_chart(fig, width='stretch')
 
-        <br><br><b>USE:</b><br>
-        Disease prediction, drug discovery
-        </div>
-        """, unsafe_allow_html=True)
+    # ==============================
+    # CLICK EXPLANATION PANEL
+    # ==============================
+    st.markdown("### 🧠 Interaction Explanation")
 
-# ==============================
-# GRAPH BUILD
-# ==============================
-G = nx.Graph()
+    selected = st.selectbox(
+        "Select interaction to explain",
+        results.head(20).index
+    )
 
-for _, row in results.head(20).iterrows():
-    G.add_edge(row["lncRNA"], row["miRNA"], weight=row["Score"])
+    row = results.loc[selected]
 
-# ==============================
-# 2D GRAPH
-# ==============================
-st.subheader("🌐 2D Interaction Network")
+    score = row["Score"]
 
-pos = nx.spring_layout(G, seed=42)
-
-edge_x, edge_y = [], []
-for edge in G.edges():
-    x0, y0 = pos[edge[0]]
-    x1, y1 = pos[edge[1]]
-    edge_x += [x0, x1, None]
-    edge_y += [y0, y1, None]
-
-edge_trace = go.Scatter(x=edge_x, y=edge_y, mode='lines')
-
-node_x, node_y, node_text = [], [], []
-for node in G.nodes():
-    x, y = pos[node]
-    node_x.append(x)
-    node_y.append(y)
-    node_text.append(node)
-
-node_trace = go.Scatter(
-    x=node_x, y=node_y,
-    mode='markers+text',
-    text=node_text,
-    marker=dict(size=15, color="cyan")
-)
-
-fig = go.Figure(data=[edge_trace, node_trace])
-fig.update_layout(plot_bgcolor='black', paper_bgcolor='black', font=dict(color='white'))
-
-st.plotly_chart(fig, width='stretch')
-
-# ==============================
-# 3D GRAPH
-# ==============================
-st.subheader("🌐 3D Network")
-
-pos = nx.spring_layout(G, dim=3, seed=42)
-
-x_nodes, y_nodes, z_nodes, text = [], [], [], []
-for node in G.nodes():
-    x, y, z = pos[node]
-    x_nodes.append(x)
-    y_nodes.append(y)
-    z_nodes.append(z)
-    text.append(node)
-
-edge_x, edge_y, edge_z = [], [], []
-for edge in G.edges():
-    x0, y0, z0 = pos[edge[0]]
-    x1, y1, z1 = pos[edge[1]]
-    edge_x += [x0, x1, None]
-    edge_y += [y0, y1, None]
-    edge_z += [z0, z1, None]
-
-edge_trace = go.Scatter3d(x=edge_x, y=edge_y, z=edge_z, mode='lines')
-
-node_trace = go.Scatter3d(
-    x=x_nodes, y=y_nodes, z=z_nodes,
-    mode='markers+text',
-    text=text,
-    marker=dict(size=5, color='cyan')
-)
-
-fig = go.Figure(data=[edge_trace, node_trace])
-fig.update_layout(paper_bgcolor='black', font=dict(color='white'))
-
-st.plotly_chart(fig, width='stretch')
-
-# ==============================
-# NODE EXPLORATION
-# ==============================
-st.subheader("🧠 Explore Node")
-
-all_nodes = list(set(df["lncRNA"]).union(set(df["miRNA"])))
-selected_node = st.selectbox("Select Node", all_nodes)
-
-if selected_node:
-    node_data = df[
-        (df["lncRNA"] == selected_node) |
-        (df["miRNA"] == selected_node)
-    ].sort_values(by="Score", ascending=False).head(10)
-
-    for _, row in node_data.iterrows():
-        st.markdown(f"""
-        <div class="card">
-        <b>{row['lncRNA']} ⟷ {row['miRNA']}</b><br>
-        Score: {row['Score']}<br>
-        WHY: embedding similarity<br>
-        HOW: Node2Vec + ML<br>
-        USE: biomarker detection
-        </div>
-        """, unsafe_allow_html=True)
-
-# ==============================
-# SHAP STYLE GRAPH
-# ==============================
-st.subheader("📊 Explainable AI")
-
-features = [f"F{i}" for i in range(10)]
-values = np.random.randn(10)
-
-fig = go.Figure(go.Bar(x=values, y=features, orientation='h'))
-fig.update_layout(plot_bgcolor='black', paper_bgcolor='black', font=dict(color='white'))
-
-st.plotly_chart(fig, width='stretch')
-
-# ==============================
-# DISEASE PANEL
-# ==============================
-st.subheader("🧪 Disease Insight")
-
-gene = st.text_input("Enter lncRNA")
-
-if gene:
-    related = df[df["lncRNA"].str.contains(gene, case=False)]
-
-    if len(related) > 0:
-        st.success("Potential biological impact detected")
-
-        st.write("""
-        - Gene regulation disruption  
-        - Protein synthesis changes  
-        - Disease pathway activation  
-        """)
-
-        st.write("""
-        Applications:
-        - Cancer detection  
-        - Drug discovery  
-        - Biomarker identification  
-        """)
+    if score > 0.8:
+        strength = "Strong Interaction 🟢"
+        reason = "Highly similar embedding patterns → likely biological regulation"
+    elif score > 0.6:
+        strength = "Moderate Interaction 🟠"
+        reason = "Partial similarity → possible indirect regulation"
     else:
-        st.warning("No interactions found")
+        strength = "Weak Interaction 🔴"
+        reason = "Low similarity → unlikely functional relationship"
+
+    st.markdown(f"""
+    <div class="card">
+    <h4>🔗 Interaction</h4>
+    <p><span class="highlight">{row['lncRNA']}</span> → <span class="highlight">{row['miRNA']}</span></p>
+
+    <h4>📊 Confidence Score</h4>
+    <p>{score:.4f}</p>
+
+    <h4>📌 Interpretation</h4>
+    <p>{strength}</p>
+
+    <h4>🧬 Why this interaction exists?</h4>
+    <p>{reason}</p>
+
+    <h4>💡 Biological Meaning</h4>
+    <p>
+    lncRNA may regulate miRNA activity, influencing gene expression pathways.
+    This helps in disease understanding, drug targeting, and biomarker discovery.
+    </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+else:
+    st.warning("❌ No interactions found. Try different search.")
